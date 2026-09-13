@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>911 — An Object of Intent</title>
+<style>
+  :root{
+    --ink:#07080a;
+    --paper:#f1eee7;
+    --gold:#c6a35c;
+    --racing-yellow:#e8b32c;
+    --muted:rgba(241,238,231,0.6);
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;background:var(--ink);color:var(--paper);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  #grain{
+    position:fixed;inset:0;z-index:6;pointer-events:none;
+    width:100vw;height:100vh;
+    opacity:0.035; mix-blend-mode:overlay;
+    image-rendering:pixelated;
+  }
+
+  #bgGlow{
+    position:fixed;inset:0;z-index:1;pointer-events:none;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 12%, rgba(50,75,140,0.22), transparent 65%),
+      radial-gradient(ellipse 90% 60% at 50% 100%, rgba(20,20,30,0.5), transparent 60%);
+  }
+
+  #stage-wrap{
+    position:fixed; inset:0; z-index:4;
+    pointer-events:none;
+    transform-style:preserve-3d;
+    will-change:transform;
+  }
+  #carCanvas{
+    width:100%; height:100%; display:block;
+    mix-blend-mode:screen;
+  }
+
+  /* Kinetic hero title — sits BEHIND the video layer; the video's
+     mix-blend-mode:screen makes its black background transparent,
+     so this text reads as if it's living behind the car. */
+  #heroText{
+    position:fixed; inset:0; z-index:2;
+    display:flex; flex-direction:column; align-items:center; justify-content:space-between;
+    padding:11vh 0 9vh;
+    pointer-events:none;
+  }
+  #heroText .line{
+    display:flex; overflow:hidden; justify-content:center; width:100%;
+  }
+  #heroText .line span{
+    display:inline-block;
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-weight:800;
+    letter-spacing:0.02em;
+    color:#f4f1ea;
+    text-shadow:0 0 60px rgba(232,179,44,0.25);
+    opacity:0;
+    transform:translateY(60px);
+    animation:riseIn 1s cubic-bezier(.16,1,.3,1) forwards;
+  }
+  #heroText .top span{ font-size:clamp(2.6rem, 10vw, 6.5rem); }
+  #heroText .bottom span{ font-size:clamp(3.4rem, 15vw, 10rem); color:var(--racing-yellow); text-shadow:0 0 80px rgba(232,179,44,0.4);}
+  @keyframes riseIn{ to{ opacity:1; transform:translateY(0); } }
+
+  header{
+    position:fixed;top:0;left:0;right:0;z-index:10;
+    display:flex;justify-content:center;align-items:center;
+    padding:1.8rem 0;
+    pointer-events:none;
+    mix-blend-mode:difference;
+  }
+  .brand{
+    font-family:'Helvetica Neue',Arial,sans-serif;
+    font-weight:600;
+    font-size:0.82rem;
+    letter-spacing:0.32em;
+    color:var(--paper);
+  }
+
+  #scrollProgress{
+    position:fixed; left:0; bottom:0; z-index:11;
+    height:2px; width:0%;
+    background:linear-gradient(90deg, var(--racing-yellow), #f4d78a);
+    transition:width 0.05s linear;
+    pointer-events:none;
+  }
+
+  .scroller{ position:relative; z-index:5; }
+  .chapter{ height:100vh; pointer-events:none; }
+
+  /* Dynamic callouts — anchored to points of interest on the car,
+     not sequential paragraphs. Positions are tuned per chapter. */
+  .callouts{
+    position:fixed; inset:0; z-index:7; pointer-events:none;
+    opacity:0; transition:opacity 0.5s ease;
+  }
+  .callouts.active{ opacity:1; }
+  .callout{
+    position:absolute;
+    display:flex; align-items:center; gap:0.7rem;
+    transform:translateY(10px);
+    opacity:0;
+    transition:opacity 0.6s ease, transform 0.6s ease;
+    transition-delay:var(--d, 0s);
+  }
+  .callouts.active .callout{ opacity:1; transform:translateY(0); }
+  .callout .dot{
+    width:8px;height:8px;border-radius:50%;
+    background:var(--racing-yellow);
+    box-shadow:0 0 0 0 rgba(232,179,44,0.6);
+    animation:ping 2.4s ease-out infinite;
+    flex-shrink:0;
+  }
+  @keyframes ping{
+    0%{ box-shadow:0 0 0 0 rgba(232,179,44,0.55); }
+    70%{ box-shadow:0 0 0 14px rgba(232,179,44,0); }
+    100%{ box-shadow:0 0 0 0 rgba(232,179,44,0); }
+  }
+  .callout .line{ width:34px; height:1px; background:rgba(241,238,231,0.4); flex-shrink:0; }
+  .callout .label{
+    font-family:Georgia,serif; font-style:italic;
+    font-size:0.85rem; color:var(--muted);
+    white-space:nowrap;
+  }
+  .callout .value{
+    font-family:'Helvetica Neue',Arial,sans-serif; font-weight:700;
+    font-size:1.5rem; color:var(--paper);
+    white-space:nowrap;
+  }
+  .callout .value .unit{ font-size:0.85rem; font-weight:400; color:var(--muted); margin-left:0.2rem; }
+  .callout.reverse{ flex-direction:row-reverse; }
+
+  .hero-mark{
+    position:fixed; left:50%; bottom:2.4rem; transform:translateX(-50%);
+    z-index:10; display:flex; flex-direction:column; align-items:center; gap:0.6rem;
+    color:var(--paper); pointer-events:none; transition:opacity 0.5s ease;
+  }
+  .hero-mark span{ font-size:0.64rem; letter-spacing:0.28em; font-weight:400; }
+  .scroll-line{ width:1px; height:32px; background:linear-gradient(to bottom, var(--racing-yellow), transparent); animation:pulse 2.2s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:0.3;} 50%{opacity:1;} }
+
+  #loading{
+    position:fixed;inset:0;z-index:100;background:var(--ink);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:1rem; transition:opacity 0.7s ease;
+  }
+  #loading .lw{ font-family:Georgia,serif;font-style:italic;color:var(--racing-yellow);font-size:0.92rem;letter-spacing:0.06em; }
+  .loadbar{ width:180px;height:1px;background:rgba(241,238,231,0.15); overflow:hidden; }
+  .loadfill{ width:0%; height:100%; background:var(--racing-yellow); transition:width 0.25s ease; }
+
+  @media (max-width:720px){
+    #heroText{ padding:9vh 0 8vh; }
+    .callout .label{ font-size:0.78rem; }
+    .callout .value{ font-size:1.25rem; }
+  }
+  @media (prefers-reduced-motion: reduce){ .scroll-line{ animation:none; } }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="lw">Lowering it onto the studio floor</div>
+  <div class="loadbar"><div class="loadfill" id="loadfill"></div></div>
+</div>
+
+<div id="bgGlow"></div>
+
+<div id="heroText">
+  <div class="line top" id="lineTop"></div>
+  <div class="line bottom" id="lineBottom"></div>
+</div>
+
+<div id="stage-wrap">
+  <canvas id="carCanvas"></canvas>
+</div>
+
+<canvas id="grain"></canvas>
+
+<header>
+  <div class="brand">NINE ELEVEN</div>
+</header>
+
+<div id="scrollProgress"></div>
+
+<div class="hero-mark" id="heroMark">
+  <span>SCROLL</span>
+  <div class="scroll-line"></div>
+</div>
+
+<div class="scroller" id="scroller">
+  <section class="chapter" data-idx="0"></section>
+  <section class="chapter" data-idx="1"></section>
+  <section class="chapter" data-idx="2"></section>
+  <section class="chapter" data-idx="3"></section>
+  <section class="chapter" data-idx="4"></section>
+</div>
+
+<!-- Dynamic callout layers, one per chapter, positioned over points of interest -->
+<div class="callouts" data-callout="0"></div>
+
+<div class="callouts" data-callout="1">
+  <div class="callout" style="top:38%; left:8%; --d:0.05s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">Hand-finished crest</div><div class="value" data-count="70" data-suffix=" yrs">0<span class="unit">yrs</span></div></div>
+  </div>
+</div>
+
+<div class="callouts" data-callout="2">
+  <div class="callout" style="top:44%; left:6%; --d:0.05s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">Centre-lock forged alloy</div><div class="value"><span data-count="20">0</span><span class="unit">inch</span></div></div>
+  </div>
+  <div class="callout reverse" style="top:58%; right:8%; --d:0.25s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">Brake calipers</div><div class="value" style="color:var(--racing-yellow);">Yellow</div></div>
+  </div>
+</div>
+
+<div class="callouts" data-callout="3">
+  <div class="callout" style="top:36%; left:7%; --d:0.05s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">0–100 km/h</div><div class="value"><span data-count="32" data-decimal="1">0</span><span class="unit">sec</span></div></div>
+  </div>
+  <div class="callout reverse" style="top:52%; right:7%; --d:0.25s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">Full-width light bar</div><div class="value">LED</div></div>
+  </div>
+</div>
+
+<div class="callouts" data-callout="4">
+  <div class="callout" style="top:34%; left:7%; --d:0.05s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">Flat-six, rear-mounted</div><div class="value"><span data-count="37" data-decimal="1">0</span><span class="unit">L twin-turbo</span></div></div>
+  </div>
+  <div class="callout reverse" style="top:50%; right:7%; --d:0.3s;">
+    <div class="dot"></div><div class="line"></div>
+    <div><div class="label">Output</div><div class="value"><span data-count="480">0</span><span class="unit">hp</span></div></div>
+  </div>
+</div>
+
+<script>
+/* ---------------------------------------------------------
+   SMOOTH SCROLL (Lenis) — same engine as the prototype build.
+--------------------------------------------------------- */
+</script>
+<script src="https://unpkg.com/lenis@1.1.13/dist/lenis.min.js"></script>
+<script>
+let lenis = null;
+if (window.Lenis) {
+  lenis = new window.Lenis({
+    duration: 1.15,
+    easing: (t) => 1 - Math.pow(1 - t, 3),
+    smoothWheel: true,
+    syncTouch: false,
+  });
+  function raf(time){ lenis.raf(time); requestAnimationFrame(raf); }
+  requestAnimationFrame(raf);
+}
+
+/* Film grain */
+(function grain(){
+  const c = document.getElementById('grain');
+  const ctx = c.getContext('2d');
+  c.width = 160; c.height = 160;
+  function draw(){
+    const id = ctx.createImageData(c.width, c.height);
+    for(let i=0;i<id.data.length;i+=4){
+      const v = Math.random()*255;
+      id.data[i]=v; id.data[i+1]=v; id.data[i+2]=v; id.data[i+3]=22;
+    }
+    ctx.putImageData(id,0,0);
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+
+/* Kinetic hero title — split into letters for a staggered rise-in */
+function buildLine(el, text, baseDelay){
+  text.split('').forEach((ch, i)=>{
+    const span = document.createElement('span');
+    span.textContent = ch === ' ' ? '\u00A0' : ch;
+    span.style.animationDelay = (baseDelay + i*0.045) + 's';
+    el.appendChild(span);
+  });
+}
+buildLine(document.getElementById('lineTop'), 'PORSCHE', 0.15);
+buildLine(document.getElementById('lineBottom'), '911', 0.55);
+
+/* ---------------------------------------------------------
+   CHAPTER / FRAME-SEQUENCE CONFIG
+--------------------------------------------------------- */
+const chapters = [
+  { key:'orbit',  folder:'assets/orbit',  count:96 },
+  { key:'badge',  folder:'assets/badge',  count:96 },
+  { key:'wheel',  folder:'assets/wheel',  count:96 },
+  { key:'tail',   folder:'assets/tail',   count:96 },
+  { key:'engine', folder:'assets/engine', count:96 },
+];
+function frameSrc(ch, i){
+  return `${ch.folder}/f_${String(i+1).padStart(3,'0')}.webp`;
+}
+
+const loadfill = document.getElementById('loadfill');
+const loadingEl = document.getElementById('loading');
+const totalFrames = chapters.reduce((a,c)=>a+c.count, 0);
+let loaded = 0;
+chapters.forEach(ch => { ch.images = new Array(ch.count); });
+
+function preload(){
+  return new Promise((resolve)=>{
+    chapters.forEach(ch=>{
+      for(let i=0;i<ch.count;i++){
+        const img = new Image();
+        img.onload = img.onerror = ()=>{
+          loaded++;
+          loadfill.style.width = Math.min(100, (loaded/totalFrames)*100) + '%';
+          if(loaded >= totalFrames) resolve();
+        };
+        img.src = frameSrc(ch, i);
+        ch.images[i] = img;
+      }
+    });
+  });
+}
+
+/* ---------------------------------------------------------
+   FULL-BLEED CANVAS — true cover-fit, no card, no cropping frame
+--------------------------------------------------------- */
+const canvas = document.getElementById('carCanvas');
+const ctx = canvas.getContext('2d');
+
+function sizeCanvas(){
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  // visualViewport reflects the ACTUAL visible area on mobile (accounts for
+  // the address bar showing/hiding), which is what was causing the car to
+  // appear cropped/out-of-frame on phones when we used window.innerWidth/Height.
+  const vv = window.visualViewport;
+  const w = vv ? vv.width : window.innerWidth;
+  const h = vv ? vv.height : window.innerHeight;
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+}
+window.addEventListener('resize', sizeCanvas);
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize', sizeCanvas);
+  window.visualViewport.addEventListener('scroll', sizeCanvas);
+}
+sizeCanvas();
+
+function drawCover(img, alpha){
+  if(!img || !img.complete || img.naturalWidth === 0) return;
+  const cw = canvas.width, ch = canvas.height;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+  const scale = Math.max(cw/iw, ch/ih);
+  const dw = iw*scale, dh = ih*scale;
+  const dx = (cw-dw)/2, dy = (ch-dh)/2;
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.globalAlpha = 1;
+}
+
+const SEAM = 0.06;
+const calloutEls = Array.from(document.querySelectorAll('.callouts'));
+let activeIdx = -1;
+const countedUp = new Set();
+
+function easeOutCubic(t){ return 1 - Math.pow(1-t, 3); }
+
+function triggerCounts(container){
+  container.querySelectorAll('[data-count]').forEach(el=>{
+    const key = el.getAttribute('data-count') + el.className + Math.random();
+    const target = parseFloat(el.getAttribute('data-count'));
+    const decimals = parseInt(el.getAttribute('data-decimal') || '0', 10);
+    const unitSpan = el.querySelector('.unit');
+    const unitHTML = unitSpan ? unitSpan.outerHTML : '';
+    const start = performance.now();
+    const dur = 1100;
+    function step(now){
+      const t = Math.min((now-start)/dur, 1);
+      const val = target * easeOutCubic(t);
+      el.innerHTML = val.toFixed(decimals) + unitHTML;
+      if(t < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+}
+
+function render(){
+  const scroller = document.getElementById('scroller');
+  const total = scroller.offsetHeight - window.innerHeight;
+  const y = window.scrollY;
+  const globalT = Math.min(Math.max(y / Math.max(total,1), 0), 1);
+
+  document.getElementById('scrollProgress').style.width = (globalT*100) + '%';
+
+  const n = chapters.length;
+  const scaled = globalT * n;
+  let idx = Math.min(Math.floor(scaled), n-1);
+  let localT = scaled - idx;
+
+  const ch = chapters[idx];
+  const floatIdx = localT * (ch.count - 1);
+  const f0 = Math.floor(floatIdx);
+  const f1 = Math.min(f0+1, ch.count-1);
+  const frac = floatIdx - f0;
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawCover(ch.images[f0], 1);
+  if(frac > 0) drawCover(ch.images[f1], frac);
+
+  if(idx < n-1 && localT > 1 - SEAM){
+    drawCover(chapters[idx+1].images[0], (localT-(1-SEAM))/SEAM);
+  }
+  if(idx > 0 && localT < SEAM){
+    drawCover(chapters[idx-1].images[chapters[idx-1].count-1], 1-(localT/SEAM));
+  }
+
+  // hero text fades/rises away as soon as scrolling begins
+  const heroFade = Math.max(0, 1 - (y / (window.innerHeight*0.55)));
+  const heroEl = document.getElementById('heroText');
+  heroEl.style.opacity = heroFade;
+  heroEl.style.transform = `translateY(${(1-heroFade)*-40}px)`;
+  document.getElementById('heroMark').style.opacity = heroFade;
+
+  if(idx !== activeIdx){
+    activeIdx = idx;
+    calloutEls.forEach(el=>{
+      const elIdx = parseInt(el.dataset.callout,10);
+      const isActive = elIdx === idx;
+      el.classList.toggle('active', isActive);
+      if(isActive && !countedUp.has(idx)){
+        countedUp.add(idx);
+        triggerCounts(el);
+      }
+    });
+  }
+}
+
+/* ---------------------------------------------------------
+   CURSOR PARALLAX — subtle 3D tilt on the whole scene
+--------------------------------------------------------- */
+let mx=0, my=0, tmx=0, tmy=0;
+window.addEventListener('mousemove', (e)=>{
+  tmx = (e.clientX/window.innerWidth)*2 - 1;
+  tmy = (e.clientY/window.innerHeight)*2 - 1;
+});
+window.addEventListener('touchmove', (e)=>{
+  if(e.touches[0]){
+    tmx = (e.touches[0].clientX/window.innerWidth)*2 - 1;
+    tmy = (e.touches[0].clientY/window.innerHeight)*2 - 1;
+  }
+}, { passive:true });
+// gentle device-tilt parallax on phones that expose orientation data
+window.addEventListener('deviceorientation', (e)=>{
+  if(e.gamma !== null && e.beta !== null){
+    tmx = Math.max(-1, Math.min(1, e.gamma/25));
+    tmy = Math.max(-1, Math.min(1, (e.beta-45)/25));
+  }
+}, true);
+const stageWrap = document.getElementById('stage-wrap');
+function tiltLoop(){
+  mx += (tmx-mx)*0.05;
+  my += (tmy-my)*0.05;
+  stageWrap.style.transform = `perspective(1400px) rotateY(${mx*2.2}deg) rotateX(${-my*2.2}deg) scale(1.02)`;
+  requestAnimationFrame(tiltLoop);
+}
+tiltLoop();
+
+function loop(){
+  render();
+  requestAnimationFrame(loop);
+}
+
+preload().then(()=>{
+  loadingEl.style.opacity = '0';
+  setTimeout(()=> loadingEl.remove(), 750);
+  sizeCanvas();
+  loop();
+});
+</script>
+</body>
+</html>
